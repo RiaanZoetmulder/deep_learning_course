@@ -681,15 +681,35 @@ def _match_instances_iou(pred_instances, gt_instances, iou_thresh=0.5):
     return matches, fp_indices, fn_indices
 
 
-def run_per_instance_dsc_demo(pred_instances, gt_instances, iou_thresh=0.5):
-    """Match instances by IoU, compute per-instance DSC, and plot the bar chart.
+def run_per_instance_dsc_demo(seed=42, iou_thresh=0.5):
+    """Generate synthetic instances, match by IoU, compute per-instance DSC, and plot.
+
+    Creates 5 GT instances and 5 predictions (4 good matches + 1 spurious),
+    leaving 1 GT unmatched (FN) to show how missed objects score DSC = 0.
 
     Parameters
     ----------
-    pred_instances : list of 2-D binary masks (predictions).
-    gt_instances   : list of 2-D binary masks (ground truth).
-    iou_thresh     : float, IoU threshold for matching.
+    seed       : int, random seed for reproducibility.
+    iou_thresh : float, IoU threshold for matching.
     """
+    rng = np.random.RandomState(seed)
+    H, W = 180, 260
+
+    # GT: 5 instances
+    gt_centers = [(40, 50), (40, 130), (40, 210), (120, 90), (120, 180)]
+    gt_radii = [22, 18, 25, 20, 22]
+    gt_instances = [make_circle_mask(H, W, cy, cx, r)
+                    for (cy, cx), r in zip(gt_centers, gt_radii)]
+
+    # Predictions: 5 instances (4 real detections + 1 spurious FP, GT4 missed → FN)
+    pred_instances = [
+        _make_irregular_mask(H, W, 42, 52, 21, rng, noise_level=0.10),  # → GT0
+        make_circle_mask(H, W, 41, 128, 16),                            # → GT1
+        _make_irregular_mask(H, W, 35, 205, 20, rng, noise_level=0.40), # → GT2
+        _make_irregular_mask(H, W, 122, 88, 19, rng, noise_level=0.15), # → GT3
+        make_circle_mask(H, W, 155, 40, 14),                            # spurious FP
+    ]
+
     matches, fp_indices, fn_indices = _match_instances_iou(
         pred_instances, gt_instances, iou_thresh
     )
@@ -706,6 +726,12 @@ def run_per_instance_dsc_demo(pred_instances, gt_instances, iou_thresh=0.5):
     overall_pixel_dsc = _dice_score(pred_combined, gt_combined)
 
     plot_per_instance_dsc(gt_instances, gt_dscs, mean_gt_dsc, overall_pixel_dsc)
+
+    # Print summary
+    print(f"Matched {len(matches)} TP | {len(fp_indices)} FP | {len(fn_indices)} FN")
+    print(f"Mean per-instance DSC: {mean_gt_dsc:.3f}  |  Overall pixel DSC: {overall_pixel_dsc:.3f}")
+    if mean_gt_dsc < overall_pixel_dsc:
+        print("Per-instance DSC < pixel DSC because missed objects drag the mean to zero.")
 
 
 # ------------------------------------------------------------------
